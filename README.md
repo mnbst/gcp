@@ -1,15 +1,15 @@
-# Cloud Run × API Gateway × Cloud SQL サーバレスアーキテクチャ構築例
+# Cloud Run × Terraform サーバレスアーキテクチャ構築例
 
 このリポジトリは、Google Cloud を用いて
 **本番運用を想定したサーバレス API アーキテクチャ**を構築した事例です。
 
-Cloud Run、API Gateway、Cloud SQL を中心とした構成により、
+Go言語によるシンプルなAPIとTerraformによるIaCで、
 
 - **フルマネージド**
 - **スケーラブル**
 - **セキュア**
-- **運用コスト最小**
-- **ログと監視が組み込まれた状態**
+- **インフラのコード化**
+- **再現性の高いデプロイ**
 
 を実現しています。
 
@@ -18,10 +18,15 @@ Cloud Run、API Gateway、Cloud SQL を中心とした構成により、
 ## 🧩 Architecture (全体構成)
 
 ```markdown
-[Client] → [API Gateway] → [Cloud Run Container] → [Cloud SQL (PostgreSQL)]
-│
-└→ [Cloud Logging / Error Reporting / Metrics]
+[Client] → [Cloud Run (Go API)] → [VPC Network]
+            │
+            └→ [Artifact Registry / Cloud Logging]
 ```
+
+- **Cloud Run**: Goアプリケーションをコンテナ実行
+- **VPC Connector**: Cloud RunからVPCへのプライベート接続
+- **Artifact Registry**: Dockerイメージの管理
+- **Terraform**: インフラ全体をコード管理
 
 
 ---
@@ -30,14 +35,13 @@ Cloud Run、API Gateway、Cloud SQL を中心とした構成により、
 
 | Layer | Service | Notes |
 |-------|----------|-------|
-| Entry | API Gateway | 認証 & ルーティング |
-| Compute | Cloud Run | コンテナ実行、水平スケール |
-| Database | Cloud SQL | 永続データ管理 |
-| Secrets | Secret Manager | DB接続情報の暗号化管理 |
-| Network | VPC / Serverless.connector | Private IP接続 |
-| Monitoring | Cloud Monitoring | p95レイテンシ監視 |
-| Logging | Cloud Logging | 構造化ログ、エラー収集 |
-| IaC | Terraform | 再現性・自動構築 |
+| Language | Go 1.25 | 軽量・高速なAPIサーバ |
+| Container | Docker | マルチステージビルド |
+| Compute | Cloud Run (v2) | コンテナ実行、水平スケール |
+| Registry | Artifact Registry | Dockerイメージ管理 |
+| Network | VPC / VPC Connector | プライベートネットワーク接続 |
+| IaC | Terraform | インフラ全体をコード管理 |
+| Build | Cloud Build | コンテナイメージのビルド |
 
 ---
 
@@ -48,28 +52,25 @@ Cloud Run、API Gateway、Cloud SQL を中心とした構成により、
 - 自動スケール
 - リクエストに応じて課金
 
-### 2. **セキュアな通信設計**
-- Cloud Runは外部公開せず
-- API Gateway経由のみアクセス可能
-- Cloud SQLはPrivate IP接続
-- Secret Managerで認証情報管理
+### 2. **Terraform によるインフラ管理**
+- すべてのリソースをコード化
+- 再現性の高いデプロイ
+- バージョン管理可能
 
-### 3. **可観測性の組み込み**
-- 構造化ログ出力（JSON）
-- Cloud Logging × Error Reporting
-- Cloud Monitoring による
-  - p50/p95/p99 レイテンシ測定
-  - アラート設定
+### 3. **コンテナベースのデプロイ**
+- Dockerマルチステージビルドで最小化
+- Artifact Registryで一元管理
+- Cloud Buildによる自動ビルド
 
-### 4. **DB接続の安定化**
-- Cloud SQL Auth Proxy
-- 同時接続数チューニング
-- バックオフリトライ
+### 4. **VPC統合**
+- VPC Connectorによるプライベート接続
+- 将来的なCloud SQL等への接続に対応
+- セキュアなネットワーク設計
 
-### 5. **Terraform による IaC**
-- module構成
-- GCS backendで state 管理
-- CI/CD（plan → validate → apply）
+### 5. **シンプルで拡張可能な設計**
+- GoによるシンプルなAPI実装
+- 段階的な機能追加が可能
+- 本番運用を見据えた構成
 
 ---
 
@@ -77,51 +78,91 @@ Cloud Run、API Gateway、Cloud SQL を中心とした構成により、
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/items` | データ一覧取得 |
-| GET | `/items/{id}` | 単一データ取得 |
-| POST | `/items` | データ登録 |
+| GET | `/` | Hello メッセージ |
+| GET | `/health` | ヘルスチェック |
 
 ---
 
 ## 🔧 使用技術（アプリ側）
 
-- Python 3.11
-- FastAPI
-- SQLAlchemy
-- psycopg2
-- uvicorn
-- google-cloud-logging
+- Go 1.25
+- net/http (標準ライブラリ)
+- Docker (マルチステージビルド)
+- distroless/base-debian12 (実行環境)
 
 ---
 
 ## 🛠 ローカル動作（Docker）
 
 ```bash
-docker build -t app .
-docker run -p 8080:8080 app
+cd go-api
+docker build -t go-api .
+docker run -p 8080:8080 go-api
+
+# 動作確認
+curl http://localhost:8080/
+curl http://localhost:8080/health
 ```
 
 
 ---
 
-## 🚀 デプロイ手順（Terraform 版は別リポジトリ）
+## 🚀 デプロイ手順
+
+### 1. Dockerイメージのビルド & プッシュ
 
 ```bash
-gcloud builds submit --tag gcr.io/$PROJECT_ID/app
-gcloud run deploy app
---image gcr.io/$PROJECT_ID/app
---allow-unauthenticated=false
+cd go-api
+
+# プロジェクトID と リージョンを設定
+export PROJECT_ID=your-project-id
+export REGION=asia-northeast1
+
+# Cloud Build でイメージをビルド & Artifact Registry にプッシュ
+gcloud builds submit --tag ${REGION}-docker.pkg.dev/${PROJECT_ID}/tf-app/go-api:latest
+```
+
+### 2. Terraform でインフラ構築
+
+```bash
+cd ../tf-go-api
+
+# 変数ファイルを編集 (terraform.tfvars)
+# project_id = "your-project-id"
+
+# 初期化
+terraform init
+
+# プラン確認
+terraform plan
+
+# 適用
+terraform apply
+```
+
+### 3. デプロイされたAPIにアクセス
+
+```bash
+# Cloud Run の URL を取得
+gcloud run services describe go-api-tf --region=${REGION} --format='value(status.url)'
+
+# アクセステスト
+curl $(gcloud run services describe go-api-tf --region=${REGION} --format='value(status.url)')
 ```
 
 
 ---
 
-## 🧪 性能検証
+## 🧪 構築済み内容
 
-- 同時リクエスト 200
-- コールドスタート対策済
-- p95 レイテンシ：**230ms**
-- スケールアウト確認済
+- ✅ Go API の実装 (net/http)
+- ✅ Dockerfile のマルチステージビルド
+- ✅ Artifact Registry リポジトリ作成
+- ✅ Cloud Run (v2) デプロイ
+- ✅ VPC ネットワーク構築
+- ✅ VPC Connector 設定
+- ✅ Terraform による IaC 化
+- ✅ サービスアカウント設定
 
 ---
 
@@ -129,20 +170,20 @@ gcloud run deploy app
 
 - IAM：最小権限（Least Privilege）
 - サービスアカウント分離
-- API Key or IAM Auth による認証
-- Private IP 接続
-- Secrets は Secret Manager 管理
+- VPC によるネットワーク分離
+- 将来的な Secret Manager 統合に対応
+- Cloud Run のサービスアカウント専用化
 
 ---
 
 ## 📊 モニタリング
 
-- Cloud Monitoring ダッシュボード作成済
-- メトリクス：
-  - request_count
-  - latency_p95
-  - error_ratio
-- Error Reporting 自動収集
+- Cloud Logging による自動ログ収集
+- Cloud Run のビルトインメトリクス
+  - リクエスト数
+  - レイテンシ
+  - エラー率
+- 将来的な Cloud Monitoring ダッシュボード追加予定
 
 ---
 
@@ -150,57 +191,69 @@ gcloud run deploy app
 
 ```bash
 .
-├── app/ # FastAPI ソース
-├── Dockerfile
-├── requirements.txt
-├── cloudrun.yaml
+├── go-api/              # Go API アプリケーション
+│   ├── main.go          # APIサーバ実装
+│   ├── Dockerfile       # マルチステージビルド
+│   └── go.mod           # Go モジュール定義
+│
+├── tf-go-api/           # Terraform インフラ定義
+│   ├── main.tf          # メインリソース定義
+│   ├── providers.tf     # プロバイダ設定
+│   ├── variable.tf      # 変数定義
+│   └── terraform.tfvars # 変数値 (gitignore)
+│
+├── .gitignore
+├── LICENSE
 └── README.md
 ```
-
-Terraformは別リポジトリに分離：
-
-terraform/
-├── main.tf
-├── modules/
-│ ├── cloudrun
-│ ├── cloudsql
-│ ├── apigateway
-│ └── network
-└── README.md
 
 
 ---
 
 ## 🎓 学習目的 & 背景
 
-クラウド実務経験はありませんが、
 **「本番運用に耐えうる構成を自力で構築できる」**
-ことを目標に以下を意識しました：
+ことを目標に、以下を実践：
 
-- 運用自動化
-- セキュアな接続設計
-- サーバレスによる拡張性
-- ログ・監視による可観測性
-- Terraform による再現性
+- Go によるシンプルなAPI実装
+- Docker コンテナ化とマルチステージビルド
+- Terraform による IaC の実践
+- Cloud Run のサーバレス活用
+- VPC ネットワークの構築と統合
+- 段階的な機能拡張が可能な設計
 
 ---
 
 ## 📌 この構成で得た知見
 
-- サーバレス構成でもネットワーク設計は重要
-- Cloud SQL 接続は最適化しないとボトルネック化
-- Cloud Run の同時実行数は性能に直結
-- Logging/Monitoring を先に組むと改善が速い
-- Terraform 化は早い段階で進めると効果が大きい
+- **Terraform で IaC を実践すると再現性が高い**
+  - リソースの依存関係を明確化できる
+  - コードレビューで設計を共有しやすい
+
+- **Go + distroless でコンテナサイズを最小化**
+  - マルチステージビルドで効率的
+  - セキュリティリスクを低減
+
+- **Cloud Run は VPC 統合が可能**
+  - VPC Connector で柔軟なネットワーク設計
+  - 将来的な Cloud SQL 接続に対応可能
+
+- **段階的な構築が重要**
+  - まずシンプルに動かす
+  - 必要に応じて機能を追加
 
 ---
 
 ## 🔜 今後の改善予定
 
-- Firestore or AlloyDB との比較検証
-- Anthos or Service Mesh 対応
-- BigQuery連携によるログ分析強化
-- マルチリージョン設計
+- [ ] Cloud SQL (PostgreSQL) との統合
+- [ ] Secret Manager による認証情報管理
+- [ ] API Gateway の追加
+- [ ] Cloud Monitoring ダッシュボード作成
+- [ ] CI/CD パイプライン構築 (Cloud Build)
+- [ ] ログの構造化と Error Reporting 統合
+- [ ] 負荷テストと性能測定
+- [ ] マルチリージョン対応
 
 ---
 
