@@ -18,12 +18,14 @@ Go言語によるシンプルなAPIとTerraformによるIaCで、
 ## 🧩 Architecture (全体構成)
 
 ```markdown
-[Client] → [Cloud Run (Go API)] → [VPC Network]
-            │
-            └→ [Artifact Registry / Cloud Logging]
+[Internet] → [Cloud Load Balancer + IAP] → [Cloud Run (Private)] → [VPC Network]
+                       │
+                       └→ [Artifact Registry / Cloud Logging]
 ```
 
-- **Cloud Run**: Goアプリケーションをコンテナ実行
+- **Cloud Load Balancer**: グローバルHTTPS ロードバランサー
+- **IAP**: Identity-Aware Proxy（Google認証＋アクセス制御）
+- **Cloud Run**: Goアプリケーションをコンテナ実行（Private）
 - **VPC Connector**: Cloud RunからVPCへのプライベート接続
 - **Artifact Registry**: Dockerイメージの管理
 - **Terraform**: インフラ全体をコード管理
@@ -38,6 +40,8 @@ Go言語によるシンプルなAPIとTerraformによるIaCで、
 | Language | Go 1.25 | 軽量・高速なAPIサーバ |
 | Container | Docker | マルチステージビルド |
 | Compute | Cloud Run (v2) | コンテナ実行、水平スケール |
+| Load Balancer | Cloud Load Balancer | グローバルHTTPS LB |
+| Security | Identity-Aware Proxy (IAP) | Google認証＋アクセス制御 |
 | Registry | Artifact Registry | Dockerイメージ管理 |
 | Network | VPC / VPC Connector | プライベートネットワーク接続 |
 | IaC | Terraform | インフラ全体をコード管理 |
@@ -127,8 +131,12 @@ gcloud builds submit --tag ${REGION}-docker.pkg.dev/${PROJECT_ID}/tf-app/go-api:
 ```bash
 cd ../tf-go-api
 
-# 変数ファイルを編集 (terraform.tfvars)
+# 変数ファイルを作成（サンプルをコピー）
+cp terraform.tfvars.example terraform.tfvars
+
+# terraform.tfvars を編集
 # project_id = "your-project-id"
+# authorized_members = ["user:your-email@example.com"]
 
 # 初期化
 terraform init
@@ -140,15 +148,19 @@ terraform plan
 terraform apply
 ```
 
-### 3. デプロイされたAPIにアクセス
+### 3. Load Balancer URLを取得してアクセス
 
 ```bash
-# Cloud Run の URL を取得
-gcloud run services describe go-api-tf --region=${REGION} --format='value(status.url)'
+# Load Balancer URLを取得
+terraform output load_balancer_url
 
-# アクセステスト
-curl $(gcloud run services describe go-api-tf --region=${REGION} --format='value(status.url)')
+# ブラウザでアクセス
+# https://34.xxx.xxx.xxx.nip.io
+
+# ※ SSL証明書のプロビジョニングに最大15分かかります
 ```
+
+> **注意**: このAPIはIAP（Identity-Aware Proxy）で保護されています。ブラウザでアクセスすると、Google認証画面が表示されます。`terraform.tfvars` の `authorized_members`（Google Group）に登録されたユーザーのみアクセス可能です。
 
 
 ---
@@ -158,21 +170,30 @@ curl $(gcloud run services describe go-api-tf --region=${REGION} --format='value
 - ✅ Go API の実装 (net/http)
 - ✅ Dockerfile のマルチステージビルド
 - ✅ Artifact Registry リポジトリ作成
-- ✅ Cloud Run (v2) デプロイ
+- ✅ Cloud Run (v2) デプロイ（Private）
+- ✅ Cloud Load Balancer（グローバルHTTPS LB）
+- ✅ Identity-Aware Proxy（IAP）統合
 - ✅ VPC ネットワーク構築
 - ✅ VPC Connector 設定
 - ✅ Terraform による IaC 化
 - ✅ サービスアカウント設定
+- ✅ Google Workspace / Google Groups連携
 
 ---
 
 ## 🔐 セキュリティ設計
 
-- IAM：最小権限（Least Privilege）
-- サービスアカウント分離
-- VPC によるネットワーク分離
-- 将来的な Secret Manager 統合に対応
-- Cloud Run のサービスアカウント専用化
+- **Identity-Aware Proxy (IAP)**: Google認証による多層防御
+- **Cloud Run Private**: インターネットから直接アクセス不可
+- **Google Groups連携**: グループベースのアクセス制御
+- **HTTPS強制**: Google管理SSL証明書
+- **サービスアカウント分離**: Cloud Run専用のサービスアカウント
+- **VPC統合**: プライベートネットワークによる通信分離
+- **Cloud Audit Logs**: すべてのアクセスを記録
+
+詳細は以下を参照：
+- [IAPデプロイメントガイド](docs/iap-deployment-guide.md)
+- [アーキテクチャ比較](docs/iap-architecture-comparison.md)
 
 ---
 

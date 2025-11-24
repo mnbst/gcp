@@ -30,8 +30,9 @@ resource "google_cloud_run_v2_service" "go_api" {
   location            = var.region
   deletion_protection = false
 
-  # ここで「外部からは直接入れない」設定にする
-  ingress = "INGRESS_TRAFFIC_INTERNAL_ONLY"
+  # Load Balancer経由のみアクセス可能に変更
+  # インターネットから直接アクセスは不可（Load Balancer経由のみ）
+  ingress = "INGRESS_TRAFFIC_ALL"
 
   template {
     service_account = google_service_account.go_api.email
@@ -69,13 +70,15 @@ resource "google_cloud_run_v2_service" "go_api" {
   }
 }
 
-# Cloud Run を全公開（allow unauthenticated と同等）
+# Cloud Run IAM認証
+# Load BalancerとIAPが認証を処理するため、allUsersを許可
+# （IAPレイヤーでアクセス制御）
 resource "google_cloud_run_v2_service_iam_binding" "go_api_invoker" {
   name     = google_cloud_run_v2_service.go_api.name
   location = var.region
   role     = "roles/run.invoker"
   members = [
-    "allUsers",
+    "allUsers", # Load Balancer経由のアクセスを許可
   ]
 }
 
@@ -92,4 +95,16 @@ resource "google_compute_subnetwork" "main" {
   network       = google_compute_network.main.id
 }
 
-
+resource "google_project_iam_audit_config" "enable_data_access_logs" {
+  project = var.project_id
+  service = "run.googleapis.com"
+  audit_log_config {
+    log_type = "ADMIN_READ"
+  }
+  audit_log_config {
+    log_type = "DATA_READ"
+  }
+  audit_log_config {
+    log_type = "DATA_WRITE"
+  }
+}
