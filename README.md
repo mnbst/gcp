@@ -131,10 +131,7 @@ gcloud builds submit --tag ${REGION}-docker.pkg.dev/${PROJECT_ID}/tf-app/go-api:
 ```bash
 cd ../tf-go-api
 
-# 変数ファイルを作成（サンプルをコピー）
-cp terraform.tfvars.example terraform.tfvars
-
-# terraform.tfvars を編集
+# terraform.tfvars を作成・編集
 # project_id = "your-project-id"
 # authorized_members = ["user:your-email@example.com"]
 
