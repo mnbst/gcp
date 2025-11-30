@@ -13,3 +13,8 @@ provider "google" {
   project = var.project_id
   region  = var.region
 }
+
+# プロジェクト情報を取得（プロジェクトNumberを動的に取得するため）
+data "google_project" "project" {
+  project_id = var.project_id
+}

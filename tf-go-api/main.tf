@@ -79,7 +79,7 @@ resource "google_cloud_run_v2_service_iam_member" "iap_invoker" {
   location = var.region
   name     = google_cloud_run_v2_service.go_api.name
   role     = "roles/run.invoker"
-  member   = "serviceAccount:service-454871423104@gcp-sa-iap.iam.gserviceaccount.com"
+  member   = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-iap.iam.gserviceaccount.com"
 }
 
 # Compute Engineデフォルトサービスアカウントにも権限を付与（Load Balancer用）
@@ -88,7 +88,7 @@ resource "google_cloud_run_v2_service_iam_member" "lb_invoker" {
   location = var.region
   name     = google_cloud_run_v2_service.go_api.name
   role     = "roles/run.invoker"
-  member   = "serviceAccount:454871423104-compute@developer.gserviceaccount.com"
+  member   = "serviceAccount:${data.google_project.project.number}-compute@developer.gserviceaccount.com"
 }
 
 # VPC ネットワーク

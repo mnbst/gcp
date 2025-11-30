@@ -120,7 +120,7 @@ resource "google_compute_global_forwarding_rule" "api_http_forwarding_rule" {
 resource "google_iap_brand" "project_brand" {
   support_email     = var.iap_support_email
   application_title = "Go API Cloud Run"
-  project           = "454871423104"  # Project number (not ID) required for IAP Brand
+  project           = data.google_project.project.number  # プロジェクトNumberを動的に取得
 }
 
 # OAuth Client
