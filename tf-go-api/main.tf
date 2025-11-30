@@ -71,8 +71,25 @@ resource "google_cloud_run_v2_service" "go_api" {
 }
 
 # Cloud Run IAM認証
-# INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER を使用することで、
-# Load Balancer経由のアクセスのみ許可され、IAM bindingは不要
+# Load Balancer（IAP保護済み）がCloud Runを呼び出すための権限
+
+# IAPサービスアカウントに権限を付与
+resource "google_cloud_run_v2_service_iam_member" "iap_invoker" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.go_api.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:service-454871423104@gcp-sa-iap.iam.gserviceaccount.com"
+}
+
+# Compute Engineデフォルトサービスアカウントにも権限を付与（Load Balancer用）
+resource "google_cloud_run_v2_service_iam_member" "lb_invoker" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.go_api.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:454871423104-compute@developer.gserviceaccount.com"
+}
 
 # VPC ネットワーク
 resource "google_compute_network" "main" {

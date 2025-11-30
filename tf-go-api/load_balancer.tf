@@ -55,10 +55,15 @@ resource "google_compute_url_map" "api_url_map" {
 
 # SSL証明書（Google管理）
 resource "google_compute_managed_ssl_certificate" "api_cert" {
-  name = "go-api-ssl-cert"
+  # ドメインが変わるたびに新しい証明書を作成できるように、動的な名前を使用
+  name = var.domain_name != "" ? "go-api-cert-custom" : "go-api-cert-nipio"
 
   managed {
     domains = var.domain_name != "" ? [var.domain_name] : ["${google_compute_global_address.lb_ip.address}.nip.io"]
+  }
+
+  lifecycle {
+    create_before_destroy = true
   }
 }
 
@@ -115,7 +120,7 @@ resource "google_compute_global_forwarding_rule" "api_http_forwarding_rule" {
 resource "google_iap_brand" "project_brand" {
   support_email     = var.iap_support_email
   application_title = "Go API Cloud Run"
-  project           = var.project_id
+  project           = "454871423104"  # Project number (not ID) required for IAP Brand
 }
 
 # OAuth Client

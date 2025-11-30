@@ -47,4 +47,9 @@ terraform.rc
 
 # claude
 .claude/
-docs/
+
+# Docs - バックアップファイル（機密情報含む）は除外
+docs/*.backup
+
+CLAUDE.md
+
