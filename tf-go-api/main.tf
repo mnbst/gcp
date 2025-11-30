@@ -32,7 +32,7 @@ resource "google_cloud_run_v2_service" "go_api" {
 
   # Load Balancer経由のみアクセス可能に変更
   # インターネットから直接アクセスは不可（Load Balancer経由のみ）
-  ingress = "INGRESS_TRAFFIC_ALL"
+  ingress = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
 
   template {
     service_account = google_service_account.go_api.email
@@ -71,16 +71,8 @@ resource "google_cloud_run_v2_service" "go_api" {
 }
 
 # Cloud Run IAM認証
-# Load BalancerとIAPが認証を処理するため、allUsersを許可
-# （IAPレイヤーでアクセス制御）
-resource "google_cloud_run_v2_service_iam_binding" "go_api_invoker" {
-  name     = google_cloud_run_v2_service.go_api.name
-  location = var.region
-  role     = "roles/run.invoker"
-  members = [
-    "allUsers", # Load Balancer経由のアクセスを許可
-  ]
-}
+# INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER を使用することで、
+# Load Balancer経由のアクセスのみ許可され、IAM bindingは不要
 
 # VPC ネットワーク
 resource "google_compute_network" "main" {

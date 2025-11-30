@@ -126,6 +126,8 @@ export REGION=asia-northeast1
 gcloud builds submit --tag ${REGION}-docker.pkg.dev/${PROJECT_ID}/tf-app/go-api:latest
 ```
 
+> **詳細ガイド**: Artifact Registry へのプッシュ方法の詳細は [Artifact Registry プッシュガイド](docs/artifact-registry-push-guide.md) を参照してください。
+
 ### 2. Terraform でインフラ構築
 
 ```bash
